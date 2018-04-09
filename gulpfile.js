@@ -1,69 +1,121 @@
 var gulp = require('gulp');
+var sass = require('gulp-sass');
+var header = require('gulp-header');
+var cleanCSS = require('gulp-clean-css');
+var rename = require("gulp-rename");
+var uglify = require('gulp-uglify');
+var pkg = require('./package.json');
+var browserSync = require('browser-sync').create();
 
-//These paths need to be changed based on the location of the respective files on your application
-var paths = {
-  html:['views/**/*.html'],
-  css:['public/**/*.css'],
-  js:['public/**/*.js','routes/**/*.js','app.js'],
-};
-var runSequence = require('run-sequence');
-var karma = require('karma').server;
-var mocha = require('gulp-mocha');
-var bower = require('gulp-bower');
-var shell = require('gulp-shell');
+// Set the banner content
+var banner = ['/*!\n',
+  ' * Start Bootstrap - <%= pkg.title %> v<%= pkg.version %> (<%= pkg.homepage %>)\n',
+  ' * Copyright 2013-' + (new Date()).getFullYear(), ' <%= pkg.author %>\n',
+  ' * Licensed under <%= pkg.license %> (https://github.com/BlackrockDigital/<%= pkg.name %>/blob/master/LICENSE)\n',
+  ' */\n',
+  ''
+].join('');
 
-/*
-Gulp tasks for linting
-*/
+// Copy third party libraries from /node_modules into /vendor
+gulp.task('vendor', function() {
 
-gulp.task('default', function(callback) {
-  runSequence('lint', 'dev-unit', callback);
+  // Bootstrap
+  gulp.src([
+      './node_modules/bootstrap/dist/**/*',
+      '!./node_modules/bootstrap/dist/css/bootstrap-grid*',
+      '!./node_modules/bootstrap/dist/css/bootstrap-reboot*'
+    ])
+    .pipe(gulp.dest('./vendor/bootstrap'))
+
+  // Font Awesome
+  gulp.src([
+      './node_modules/font-awesome/**/*',
+      '!./node_modules/font-awesome/{less,less/*}',
+      '!./node_modules/font-awesome/{scss,scss/*}',
+      '!./node_modules/font-awesome/.*',
+      '!./node_modules/font-awesome/*.{txt,json,md}'
+    ])
+    .pipe(gulp.dest('./vendor/font-awesome'))
+
+  // jQuery
+  gulp.src([
+      './node_modules/jquery/dist/*',
+      '!./node_modules/jquery/dist/core.js'
+    ])
+    .pipe(gulp.dest('./vendor/jquery'))
+
+  // jQuery Easing
+  gulp.src([
+      './node_modules/jquery.easing/*.js'
+    ])
+    .pipe(gulp.dest('./vendor/jquery-easing'))
+
+  // Magnific Popup
+  gulp.src([
+      './node_modules/magnific-popup/dist/*'
+    ])
+    .pipe(gulp.dest('./vendor/magnific-popup'))
+
 });
 
-gulp.task('lint-js', shell.task(
-    ['node_modules/.bin/jshint app.js routes/ --reporter=node_modules/jshint-junit-reporter/reporter.js > test/jslint.xml'],
-    { cwd: __dirname, ignoreErrors: false }
-));
-
-gulp.task('lint-css', shell.task(
-    ['node_modules/.bin/csslint public/**/*.css --ignore=box-model,ids --format=junit-xml > test/csslint.xml'],
-    { cwd: __dirname, ignoreErrors: false }
-));
-
-gulp.task('lint', ['lint-js','lint-css']);
-
-/*
-Gulp tasks for unit tests
-*/
-
-//Task for karma (frontend) unit tests
-gulp.task('dev-karma', function(done) {
-  karma.start({
-    configFile: __dirname + '/test/karma.conf.js',
-    singleRun: true,
-  }, done);
+// Compile SCSS
+gulp.task('css:compile', function() {
+  return gulp.src('./scss/**/*.scss')
+    .pipe(sass.sync({
+      outputStyle: 'expanded'
+    }).on('error', sass.logError))
+    .pipe(gulp.dest('./css'))
 });
 
-//Task for mocha (server) unit tests
-gulp.task('dev-mocha', function() {
-  return gulp.src('test/unit/server/**/*spec.js', {read: false})
-    .pipe(mocha({
-      globals:['expect'],
-      timeout: 3000,
-      ignoreLeaks: true,
-      ui: 'bdd',
-      colors: true,
-      reporter: 'mocha-jenkins-reporter',
-      reporterOptions: {
-        junit_report_name: 'Mocha Unit Tests for Server',
-        junit_report_path: 'test/mocha-report.xml',
-        junit_report_stack: 1,
-      },
-    }));
+// Minify CSS
+gulp.task('css:minify', ['css:compile'], function() {
+  return gulp.src([
+      './css/*.css',
+      '!./css/*.min.css'
+    ])
+    .pipe(cleanCSS())
+    .pipe(rename({
+      suffix: '.min'
+    }))
+    .pipe(gulp.dest('./css'))
+    .pipe(browserSync.stream());
 });
 
-gulp.task('dev-setup', function() {
-  return bower();
+// CSS
+gulp.task('css', ['css:compile', 'css:minify']);
+
+// Minify JavaScript
+gulp.task('js:minify', function() {
+  return gulp.src([
+      './js/*.js',
+      '!./js/*.min.js'
+    ])
+    .pipe(uglify())
+    .pipe(rename({
+      suffix: '.min'
+    }))
+    .pipe(gulp.dest('./js'))
+    .pipe(browserSync.stream());
 });
 
-gulp.task('dev-unit', ['dev-karma','dev-mocha']);
+// JS
+gulp.task('js', ['js:minify']);
+
+// Default task
+gulp.task('default', ['css', 'js', 'vendor']);
+
+// Configure the browserSync task
+gulp.task('browserSync', function() {
+  browserSync.init({
+    server: {
+      baseDir: "./"
+    }
+  });
+});
+
+// Dev task
+gulp.task('dev', ['css', 'js', 'browserSync'], function() {
+  gulp.watch('./scss/*.scss', ['css']);
+  gulp.watch('./js/*.js', ['js']);
+  gulp.watch('./*.html', browserSync.reload);
+});
